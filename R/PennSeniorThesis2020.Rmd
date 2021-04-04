@@ -1,0 +1,290 @@
+---
+title: "PennSeniorThesis2020"
+author: "Eleanor Stalick"
+date: "3/8/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+# IMPORT CATEGORIZED TWEET DATA AND CREATE TIME-SEPARATED CSVs 
+Feb 25 2020, CDC declares that covid is headed towards Pandemic status
+May 25 2020, Police officers kill George Floyd
+(these three files will be individually grouped, then timestamped and combined)
+```{r}
+library(lubridate)
+
+
+### tweet data importation
+setwd("C:/Users/Zach/Desktop/Eleanor_2021/Penn_Senior_Thesis/tweet_categorization/output_csvs")
+tweets_data <- read.csv("categorized_tweets_2020.csv")
+
+tweets_data$tweet_timestamp <- mdy_hms(tweets_data$tweet_timestamp)
+
+# pre_covid and pre_blm vars
+tweets_data$pre_covid[tweets_data$tweet_timestamp<as.Date("2020-02-25")] <- TRUE
+tweets_data$pre_covid[tweets_data$tweet_timestamp>=as.Date("2020-02-25")] <- FALSE
+tweets_data$pre_blm[tweets_data$tweet_timestamp<as.Date("2020-05-25")] <- TRUE
+tweets_data$pre_blm[tweets_data$tweet_timestamp>=as.Date("2020-05-25")] <- FALSE
+
+# sort into 3 groups
+precov_data <- subset(tweets_data, subset = pre_covid==TRUE)
+postcov_preblm_data <- subset(tweets_data, subset = (pre_covid==FALSE & pre_blm==TRUE))
+postblm_data <- subset(tweets_data, subset = pre_blm==FALSE)
+
+write.csv(precov_data,"categorized_tweets_2020_precov.csv", row.names = TRUE)
+write.csv(postcov_preblm_data,"categorized_tweets_2020_postcov_preblm.csv", row.names = TRUE)
+write.csv(postblm_data,"categorized_tweets_2020_postblm.csv", row.names = TRUE)
+```
+
+# IMPORT LIBRARIES, TWEET DATA, CONFIGURE VARS
+```{r}
+library(stargazer)
+library(sandwich)
+library(lmtest)
+
+
+### data importation
+setwd("C:/Users/Zach/Desktop/Eleanor_2021/Penn_Senior_Thesis/tweet_categorization/output_csvs")
+data <- read.csv("grouped_tweets_2020_timestamped.csv")
+
+### IV and CV creation (gender, party, incumbency status, postcov, postblm)
+data$male[data$gender=="Female"] <- 0
+data$male[data$gender=="Male"] <- 1
+
+data$republican[data$party=="Democratic" | data$party=="Democratic Party"] <- 0
+data$republican[data$party=="Republican" | data$party=="Republican Party"] <- 1
+
+setwd("C:/Users/Zach/Desktop/Eleanor_2021/Penn_Senior_Thesis/ballotpedia_web_scraping/output_csvs")
+temp_candidates_data <- read.csv("candidates_2020.csv")
+data$incumbent <- temp_candidates_data$incumbent[match(data$candidate_id, temp_candidates_data$candidate_id)]
+
+data$postcov[data$post_covid==FALSE] <- 0
+data$postcov[data$post_covid==TRUE] <- 1
+
+data$postblm[data$post_blm==FALSE] <- 0
+data$postblm[data$post_blm==TRUE] <- 1
+
+### DV creation 1/2 (ratios of each category, ratios of fem and masc, ratio of covid)
+data$womens_rights_ratio <- (data$womens_rights_count/data$total_tweets)*100
+data$familycare_ratio <- (data$familycare_count/data$total_tweets)*100
+data$education_ratio <- (data$education_count/data$total_tweets)*100
+data$healthcare_ratio <- (data$healthcare_count/data$total_tweets)*100
+
+data$military_ratio <- (data$military_count/data$total_tweets)*100
+data$economics_ratio <- (data$economics_count/data$total_tweets)*100
+data$foreign_affairs_ratio <- (data$foreign_affairs_count/data$total_tweets)*100
+data$policing_ratio <- (data$policing_count/data$total_tweets)*100
+
+data$feminine_count <- data$womens_rights_count + data$familycare_count + data$education_count + data$healthcare_count
+data$feminine_ratio <- (data$feminine_count/data$total_tweets)*100
+data$masculine_count <- data$military_count + data$economics_count + data$foreign_affairs_count + data$policing_count
+data$masculine_ratio <- (data$masculine_count/data$total_tweets)*100
+
+data$covid_ratio <- (data$covid_count/data$total_tweets)*100
+
+# DV creation 2/2 (average engagement scores by category, aveng scores fem and masc, aveng score covid)
+data$womens_rights_aveng <- data$womens_rights_average_favorites + data$womens_rights_average_retweets
+data$familycare_aveng <- data$familycare_average_favorites + data$familycare_average_retweets
+data$education_aveng <- data$education_average_favorites + data$education_average_retweets
+data$healthcare_aveng <- data$healthcare_average_favorites + data$healthcare_average_retweets
+
+data$military_aveng <- data$military_average_favorites + data$military_average_retweets
+data$economics_aveng <- data$economics_average_favorites + data$economics_average_retweets
+data$foreign_affairs_aveng <- data$foreign_affairs_average_favorites + data$foreign_affairs_average_retweets
+data$policing_aveng <- data$policing_average_favorites + data$policing_average_retweets
+
+data$aveng <- data$mean_candidate_favorites + data$mean_candidate_retweets
+
+data$womens_rights_engscore <- (data$womens_rights_aveng/data$aveng)*100
+data$familycare_engscore <- (data$familycare_aveng/data$aveng)*100
+data$education_engscore <- (data$education_aveng/data$aveng)*100
+data$healthcare_engscore <- (data$healthcare_aveng/data$aveng)*100
+
+data$military_engscore <- (data$military_aveng/data$aveng)*100
+data$economics_engscore <- (data$economics_aveng/data$aveng)*100
+data$foreign_affairs_engscore <- (data$foreign_affairs_aveng/data$aveng)*100
+data$policing_engscore <- (data$policing_aveng/data$aveng)*100
+
+data$feminine_engscore <- data$feminine_average_engagement/data$aveng*100
+data$masculine_engscore <- data$masculine_average_engagement/data$aveng*100
+
+data$covid_aveng <- data$covid_average_favorites + data$covid_average_retweets
+data$covid_engscore <- (data$covid_aveng/data$aveng)*100
+```
+
+# SELECT VARS, CREATE STATS TABLE
+```{r}
+library(stargazer)
+library(sandwich)
+library(lmtest)
+
+# select relevant variables
+myvars <- c("male","republican", "incumbent", "postcov", "postblm",
+            "feminine_ratio","masculine_ratio", "covid_ratio",
+            "womens_rights_ratio","familycare_ratio","education_ratio","healthcare_ratio",
+            "military_ratio","economics_ratio","foreign_affairs_ratio","policing_ratio")
+mydata <- data[myvars]
+head(mydata)
+
+# descriptive stats table
+stargazer(mydata, type="text", title = "2020 Descriptive Stats Table 2: Twitter Discussion",
+          covariate.labels = c("Male","Republican","Incumbent", "Post-Pandemic", "Post-BLM",
+                               "% Feminine Tweets", "% Masculine Tweets", "% COVID-19 Tweets",
+                               "% Women's Rights","% Familycare","% Education","% Healthcare",
+                               "% Military","% Economics","% Foreign Affairs","% Policing"),
+          summary.stat = c("n","mean","median","sd","min","max"))
+
+mydata_omitNAs <- na.omit(mydata[myvars])
+```
+
+# REGRESSIONS 1 + 2, FEM + MASC 
+```{r}
+# create and display regressions for feminine ratio with robust standard errors
+fem_bivar <- lm(feminine_ratio ~ male, data=mydata_omitNAs)
+fem_bivar_robust <- coeftest(fem_bivar, vcov = vcovHC(fem_bivar, type="HC1"))
+
+fem_multivar <- lm(feminine_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+fem_multivar_robust <- coeftest(fem_multivar, vcov = vcovHC(fem_multivar, type="HC1"))
+
+stargazer(fem_bivar_robust,fem_multivar_robust, title="2020 OLS Regression 1", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Feminine Topics", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# create and display regressions for masculine ratio with robust standard errors
+masc_bivar <- lm(masculine_ratio ~ male, data=mydata_omitNAs)
+masc_bivar_robust <- coeftest(masc_bivar, vcov = vcovHC(masc_bivar, type="HC1"))
+
+masc_multivar <- lm(masculine_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+masc_multivar_robust <- coeftest(masc_multivar, vcov = vcovHC(masc_multivar, type="HC1"))
+
+stargazer(masc_bivar_robust,masc_multivar_robust, title="2020 OLS Regression 2", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Masculine Topics", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+```
+
+# FEMININE TOPIC REGRESSIONS
+WR = womens_rights (1a)
+FC = familycare (1b)
+ED = education (1c)
+HC = healthcare (1d)
+```{r}
+# womens_rights (WR)
+WR_bivar <- lm(womens_rights_ratio ~ male, data=mydata_omitNAs)
+WR_bivar_robust <- coeftest(WR_bivar, vcov = vcovHC(WR_bivar, type="HC1"))
+
+WR_multivar <- lm(womens_rights_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+WR_multivar_robust <- coeftest(WR_multivar, vcov = vcovHC(WR_multivar, type="HC1"))
+
+stargazer(WR_bivar_robust,WR_multivar_robust, title="2020 OLS Regression 1a", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Women's Rights", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# familycare (FC)
+FC_bivar <- lm(familycare_ratio ~ male, data=mydata_omitNAs)
+FC_bivar_robust <- coeftest(FC_bivar, vcov = vcovHC(FC_bivar, type="HC1"))
+
+FC_multivar <- lm(familycare_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+FC_multivar_robust <- coeftest(FC_multivar, vcov = vcovHC(FC_multivar, type="HC1"))
+
+stargazer(FC_bivar_robust,FC_multivar_robust, title="2020 OLS Regression 1b", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Familycare", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# education (ED)
+ED_bivar <- lm(education_ratio ~ male, data=mydata_omitNAs)
+ED_bivar_robust <- coeftest(ED_bivar, vcov = vcovHC(ED_bivar, type="HC1"))
+
+ED_multivar <- lm(education_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+ED_multivar_robust <- coeftest(ED_multivar, vcov = vcovHC(ED_multivar, type="HC1"))
+
+stargazer(ED_bivar_robust,ED_multivar_robust, title="2020 OLS Regression 1c", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Education", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# healthcare (HC)
+HC_bivar <- lm(healthcare_ratio ~ male, data=mydata_omitNAs)
+HC_bivar_robust <- coeftest(HC_bivar, vcov = vcovHC(HC_bivar, type="HC1"))
+
+HC_multivar <- lm(healthcare_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+HC_multivar_robust <- coeftest(HC_multivar, vcov = vcovHC(HC_multivar, type="HC1"))
+
+stargazer(HC_bivar_robust,HC_multivar_robust, title="2020 OLS Regression 1d", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Healthcare", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+```
+
+# MASCULINE TOPIC REGRESSIONS
+MT = military (2a)
+EN = economics (2b)
+FA = foreign_affairs (2c)
+PO = policing (2d)
+```{r}
+# military (MT)
+MT_bivar <- lm(military_ratio ~ male, data=mydata_omitNAs)
+MT_bivar_robust <- coeftest(MT_bivar, vcov = vcovHC(MT_bivar, type="HC1"))
+
+MT_multivar <- lm(military_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+MT_multivar_robust <- coeftest(MT_multivar, vcov = vcovHC(MT_multivar, type="HC1"))
+
+stargazer(MT_bivar_robust,MT_multivar_robust, title="2020 OLS Regression 2a", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing the Military", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# economics (EN)
+EN_bivar <- lm(economics_ratio ~ male, data=mydata_omitNAs)
+EN_bivar_robust <- coeftest(EN_bivar, vcov = vcovHC(EN_bivar, type="HC1"))
+
+EN_multivar <- lm(economics_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+EN_multivar_robust <- coeftest(EN_multivar, vcov = vcovHC(EN_multivar, type="HC1"))
+
+stargazer(EN_bivar_robust,EN_multivar_robust, title="2020 OLS Regression 2b", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing the Economy", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# foreign_affairs (FA)
+FA_bivar <- lm(foreign_affairs_ratio ~ male, data=mydata_omitNAs)
+FA_bivar_robust <- coeftest(FA_bivar, vcov = vcovHC(FA_bivar, type="HC1"))
+
+FA_multivar <- lm(foreign_affairs_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+FA_multivar_robust <- coeftest(FA_multivar, vcov = vcovHC(FA_multivar, type="HC1"))
+
+stargazer(FA_bivar_robust,FA_multivar_robust, title="2020 OLS Regression 2c", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Foreign Affairs", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+# policing (PO)
+PO_bivar <- lm(policing_ratio ~ male, data=mydata_omitNAs)
+PO_bivar_robust <- coeftest(PO_bivar, vcov = vcovHC(PO_bivar, type="HC1"))
+
+PO_multivar <- lm(policing_ratio ~ male + republican + incumbent + postcov + postblm + (male*postcov) + (male*postblm) + (republican*postcov) + (republican*postblm), data = mydata_omitNAs)
+PO_multivar_robust <- coeftest(PO_multivar, vcov = vcovHC(PO_multivar, type="HC1"))
+
+stargazer(PO_bivar_robust,PO_multivar_robust, title="2020 OLS Regression 2d", align=TRUE, type="text", 
+          dep.var.caption="Percent of Tweets Discussing Policing", dep.var.labels.include=FALSE,
+          column.labels=c("Bivariate","Multivariate"), model.numbers=FALSE,
+          model.names=FALSE, order = c("Constant", "Male", "Republican","Incumbent","Post-Pandemic","Post-BLM"),
+          covariate.labels=c("Constant","Male","Republican","Incumbent", "Post-Pandemic","Post-BLM", "Male:Post-Pandemic", "Male:Post-BLM", "Republican:Post-Pandemic", "Republican:Post-BLM"))
+
+```
+
