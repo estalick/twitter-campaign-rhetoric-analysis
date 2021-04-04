@@ -1,1 +1,6 @@
-# twitter-campaign-rhetoric-analysis
+## <div align="center">Gendered Rhetoric: Femininity, Masculinity, and the Influence of Candidate Gender on Discussions of Gendered Topics on Twitter</div>
+### <div align="center">Written by Eleanor Stalick</div>
+### <div align="center">Advised by Dr. Dawn Teele</div>
+
+### Abstract
+Social and legal history in the U.S. have associated women with homemaking and men with breadwinning. Consequently, Americans equate femininity and masculinity with the competencies required of homemakers and breadwinners, respectively. Femininity implies competency on women’s rights, education, healthcare, and familycare, whereas masculinity implies competency on the military, economics, foreign policy, and policing. Americans further view politics, especially Republican politics, as masculine. These stereotypes imply differences in the rhetorical strategies of male and female political candidates. Using a novel dataset of 698,609 tweets posted across 2,092 major-party House congressional campaigns in the years prior to the 2018 and 2020 elections, I find that a candidate’s gender determines the gendered topics they discuss, a candidate’s gender does not determine the engagement they receive on tweets discussing gendered topics, and the COVID-19 pandemic and the 2020 Black Lives Matter protests changed the relationship between candidate party and gendered topic discussion.
