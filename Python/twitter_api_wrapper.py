@@ -42,16 +42,15 @@ def write_batch():
 
 if __name__ == "__main__":
     twitter_credentials = {
-        "consumer_key": "wkfvHMlqea3Xh7cQIvqN0akcb",
-        "consumer_secret": "xSTZPNtnlWW8KAqMF7LeRdMDSjqSmaNt9Jbl3BM6j1arvHzc1x",
-        "access_token": "1282852132610285569-Q35U3wPpXMbHvOZdCaD1i8rhZEpxg5",
-        "access_token_secret": "HJMIwOhbtdqQ0QmPUVRb46OHTgPBgLvmDoHhrEdHnktKD"
+        "consumer_key": "",
+        "consumer_secret": "",
+        "access_token": "",
+        "access_token_secret": ""
     }
 
     tp = TwitterParser(twitter_credentials)
 
     input_csv = './Candidates2020_all_id_pt.csv'
-    # input_csv = './Candidates2018_all_id.csv'
     output_csv = './Candidates2020_tweets_3accts_{0}.csv'.format(datetime.datetime.now().strftime("%H%M%S_%m%d%Y"))
 
     id_from = 1260
